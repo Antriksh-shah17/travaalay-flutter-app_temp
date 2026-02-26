@@ -23,73 +23,68 @@ class _LoginScreenState extends State<LoginScreen> {
   bool loading = false;
 
   // ✅ Use 10.0.2.2 for Android emulator instead of localhost
-  final String baseUrl = 'http://10.135.240.52:3000';
+final String baseUrl = 'http://192.168.1.104:5000/api/auth'; 
+   Future<void> login() async {
+  setState(() => loading = true);
 
-  Future<void> login() async {
-    setState(() => loading = true);
+  try {
+    final response = await http.post(
+      Uri.parse('$baseUrl/login'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'email': emailController.text.trim(),
+        'password': passwordController.text.trim(),
+      }),
+    );
 
-    try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/login'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'email': emailController.text.trim(),
-          'password': passwordController.text.trim(),
-        }),
-      );
+    final data = jsonDecode(response.body);
+    setState(() => loading = false);
 
-      setState(() => loading = false);
+    if (response.statusCode == 200) {
+      final token = data['token'];
+      final user = data['user'];
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        final token = data['accessToken'];
-        final user = data['user'];
+      await TokenStorage.saveToken(token);
 
-        // Save token securely
-        await TokenStorage.saveToken(token);
+      String role = user['role']?.toLowerCase() ?? 'user';
 
-        // Navigate based on role
-        String role = user['role']?.toLowerCase() ?? 'user';
-        if (role == 'traveler' || role == 'user') {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (_) => HomePage(user: user)),
-          );
-        } else if (role == 'host') {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (_) => HostDashboard(user: user)),
-          );
-        } else if (role == 'translator') {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (_) => TranslatorDashboard(user: user)),
-          );
-          // TODO: Add TranslatorDashboard
-        } else if (role == 'admin') {
-           Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (_) => AdminDashboard(user: user)),
-          );
-          // TODO: Add AdminDashboard
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Unknown role")),
-          );
-        }
+      if (role == 'user') {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => HomePage(user: user)),
+        );
+      } else if (role == 'host') {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => HostDashboard(user: user)),
+        );
+      } else if (role == 'translator') {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => TranslatorDashboard(user: user)),
+        );
+      } else if (role == 'admin') {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => AdminDashboard(user: user)),
+        );
       } else {
-        final error = jsonDecode(response.body);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(error['error'] ?? 'Login failed')),
+          const SnackBar(content: Text("Unknown role")),
         );
       }
-    } catch (e) {
-      setState(() => loading = false);
+    } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Login failed: $e")),
+        SnackBar(content: Text(data['message'] ?? 'Login failed')),
       );
     }
+  } catch (e) {
+    setState(() => loading = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text("Login failed: $e")),
+    );
   }
+}
 
   @override
   Widget build(BuildContext context) {

@@ -18,54 +18,52 @@ class _SignupScreenState extends State<SignupScreen> {
   final TextEditingController roleController = TextEditingController();
   bool loading = false;
 
-  final String baseUrl = 'http://10.135.240.52:3000';
+final String baseUrl = 'http://192.168.1.104:5000/api/auth';
+Future<void> signup() async {
+  setState(() => loading = true);
 
-  Future<void> signup() async {
-    setState(() => loading = true);
+  try {
+    final response = await http.post(
+      Uri.parse('$baseUrl/signup'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'name': nameController.text.trim(),
+        'email': emailController.text.trim(),
+        'password': passwordController.text.trim(),
+        'role': roleController.text.trim().toLowerCase(),
+        'city': "Ahmedabad" // optional if backend expects
+      }),
+    );
 
-    try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/signup'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'name': nameController.text.trim(),
-          'email': emailController.text.trim(),
-          'password': passwordController.text.trim(),
-          'role': roleController.text.trim().toLowerCase(),
-        }),
+    final data = jsonDecode(response.body);
+    setState(() => loading = false);
+
+    if (response.statusCode == 201) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Registered successfully! Please login."),
+          backgroundColor: Colors.green,
+        ),
       );
 
-      setState(() => loading = false);
-
-      if (response.statusCode == 201) {
-        // Signup success
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Registered successfully! Please login."),
-            backgroundColor: Colors.green,
-          ),
+      Future.delayed(const Duration(seconds: 1), () {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const LoginScreen()),
         );
-
-        // Navigate to login screen after short delay
-        Future.delayed(const Duration(seconds: 1), () {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (_) => const LoginScreen()),
-          );
-        });
-      } else {
-        final error = jsonDecode(response.body);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(error['error'] ?? 'Signup failed')),
-        );
-      }
-    } catch (e) {
-      setState(() => loading = false);
+      });
+    } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Signup failed: $e")),
+        SnackBar(content: Text(data['message'] ?? 'Signup failed')),
       );
     }
+  } catch (e) {
+    setState(() => loading = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text("Signup failed: $e")),
+    );
   }
+}
 
   @override
   Widget build(BuildContext context) {
