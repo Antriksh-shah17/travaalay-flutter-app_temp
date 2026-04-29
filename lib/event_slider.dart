@@ -1,77 +1,121 @@
-import 'package:flutter/material.dart';
 import 'package:carousel_slider/carousel_slider.dart';
-import 'package:traavaalay/Model/event.dart';
+import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
+import 'package:traavaalay/Model/event.dart';
+import 'package:traavaalay/theme/app_colors.dart';
+import 'package:video_player/video_player.dart';
 
 class EventSlider extends StatefulWidget {
+  final List<Event> events;
   final List<String> defaultMedia;
 
-  const EventSlider({super.key, required this.defaultMedia, required List<Event> events});
+  const EventSlider({
+    super.key,
+    required this.events,
+    required this.defaultMedia,
+  });
 
   @override
   State<EventSlider> createState() => _EventSliderState();
 }
 
 class _EventSliderState extends State<EventSlider> {
-  List<Event> slides = [];
-  final String baseUrl = "http://10.135.240.52:3000"; // LAN IP of your computer
   int _currentIndex = 0;
-  bool _isLoading = true;
+  final Map<String, VideoPlayerController> _videoControllers = {};
+
+  List<Event> get _slides => widget.events.isNotEmpty
+      ? widget.events
+      : widget.defaultMedia
+            .map(
+              (url) => Event(
+                title: "",
+                description: "",
+                date: DateTime.now(),
+                mediaPath: url,
+              ),
+            )
+            .toList();
 
   @override
   void initState() {
     super.initState();
-    fetchEvents();
+    _syncVideoControllers();
   }
 
-  Future<void> fetchEvents() async {
-    try {
-      final response = await http.get(Uri.parse("$baseUrl/events"));
+  @override
+  void didUpdateWidget(covariant EventSlider oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _syncVideoControllers();
+  }
 
-      if (response.statusCode == 200) {
-        final List<dynamic> data = json.decode(response.body);
+  void _syncVideoControllers() {
+    final activeMediaPaths = _slides.map((slide) => slide.mediaPath).toSet();
 
-        slides = data.map((jsonEvent) {
-          return Event(
-            
-            title: jsonEvent['title'] ?? "",
-            description: jsonEvent['description'] ?? "",
-            date: DateTime.tryParse(jsonEvent['date'] ?? "") ?? DateTime.now(),
-            mediaPath: jsonEvent['mediaPath'] != null && jsonEvent['mediaPath'].isNotEmpty
-                ? "$baseUrl/assets/${jsonEvent['mediaPath']}" // full URL for local image
-                : "",
-          );
-        }).toList();
-      } else {
-        // fallback to default media
-        slides = widget.defaultMedia.map((url) => Event(
-          
-          title: "",
-          description: "",
-          date: DateTime.now(),
-          mediaPath: url
-        )).toList();
-      }
-    } catch (e) {
-      slides = widget.defaultMedia.map((url) => Event(
-        
-        title: "",
-        description: "",
-        date: DateTime.now(),
-        mediaPath: url
-      )).toList();
-    } finally {
-      setState(() => _isLoading = false);
+    final stalePaths = _videoControllers.keys
+        .where((path) => !activeMediaPaths.contains(path))
+        .toList();
+    for (final path in stalePaths) {
+      _videoControllers.remove(path)?.dispose();
     }
+
+    for (final slide in _slides) {
+      final path = slide.mediaPath;
+      if (!_looksLikeVideo(path) || _videoControllers.containsKey(path)) {
+        continue;
+      }
+
+      final controller = path.startsWith('assets/')
+          ? VideoPlayerController.asset(path)
+          : VideoPlayerController.networkUrl(Uri.parse(path));
+
+      _videoControllers[path] = controller;
+      controller
+        ..setLooping(true)
+        ..setVolume(0)
+        ..initialize().then((_) {
+          if (!mounted) return;
+          _updatePlayback();
+          setState(() {});
+        });
+    }
+
+    _updatePlayback();
+  }
+
+  void _updatePlayback() {
+    final currentPath = _currentIndex < _slides.length
+        ? _slides[_currentIndex].mediaPath
+        : null;
+
+    _videoControllers.forEach((path, controller) {
+      if (!controller.value.isInitialized) return;
+      if (path == currentPath) {
+        controller.play();
+      } else {
+        controller.pause();
+      }
+    });
+  }
+
+  bool _looksLikeVideo(String path) {
+    final normalized = path.toLowerCase();
+    return normalized.endsWith('.mp4') ||
+        normalized.endsWith('.mov') ||
+        normalized.endsWith('.m4v') ||
+        normalized.endsWith('.webm');
+  }
+
+  @override
+  void dispose() {
+    for (final controller in _videoControllers.values) {
+      controller.dispose();
+    }
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
-    }
+    final slides = _slides;
 
     return Column(
       children: [
@@ -79,24 +123,33 @@ class _EventSliderState extends State<EventSlider> {
           itemCount: slides.length,
           itemBuilder: (context, index, realIndex) {
             final slide = slides[index];
+
             return ClipRRect(
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(18),
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  slide.mediaPath.isNotEmpty
-                      ? Image.network(
-                          slide.mediaPath,
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) {
-                            return const Center(child: Text("Image not found"));
-                          },
-                        )
-                      : const Center(child: Text("No Image")),
+                  _MediaSlide(
+                    mediaPath: slide.mediaPath,
+                    controller: _videoControllers[slide.mediaPath],
+                  ),
+                  Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.black.withValues(alpha: 0.04),
+                          Colors.black.withValues(alpha: 0.55),
+                        ],
+                      ),
+                    ),
+                  ),
                   if (slide.title.isNotEmpty)
                     Positioned(
-                      bottom: 20,
-                      left: 10,
+                      left: 16,
+                      right: 16,
+                      bottom: 16,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -112,7 +165,7 @@ class _EventSliderState extends State<EventSlider> {
                           Text(
                             DateFormat('dd MMM yyyy').format(slide.date),
                             style: const TextStyle(
-                              fontSize: 16,
+                              fontSize: 14,
                               color: Colors.white70,
                             ),
                           ),
@@ -125,15 +178,14 @@ class _EventSliderState extends State<EventSlider> {
           },
           options: CarouselOptions(
             height: 300,
-            viewportFraction: 1.0,
-            enlargeCenterPage: false,
+            viewportFraction: 1,
             autoPlay: true,
-            autoPlayInterval: const Duration(seconds: 3),
-            enableInfiniteScroll: slides.length > 1,
+            autoPlayInterval: const Duration(seconds: 4),
             onPageChanged: (index, reason) {
               setState(() {
                 _currentIndex = index;
               });
+              _updatePlayback();
             },
           ),
         ),
@@ -141,18 +193,94 @@ class _EventSliderState extends State<EventSlider> {
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: List.generate(slides.length, (index) {
-            return Container(
-              width: 10,
+            return AnimatedContainer(
+              duration: const Duration(milliseconds: 220),
+              width: _currentIndex == index ? 20 : 10,
               height: 10,
               margin: const EdgeInsets.symmetric(horizontal: 4),
               decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: _currentIndex == index ? Colors.teal : Colors.grey,
+                borderRadius: BorderRadius.circular(999),
+                color: _currentIndex == index
+                    ? AppColors.secondary
+                    : AppColors.textMuted,
               ),
             );
           }),
         ),
       ],
+    );
+  }
+}
+
+class _MediaSlide extends StatefulWidget {
+  final String mediaPath;
+  final VideoPlayerController? controller;
+
+  const _MediaSlide({required this.mediaPath, this.controller});
+
+  @override
+  State<_MediaSlide> createState() => _MediaSlideState();
+}
+
+class _MediaSlideState extends State<_MediaSlide> {
+  bool _isVideo = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _isVideo = _looksLikeVideo(widget.mediaPath);
+  }
+
+  @override
+  void didUpdateWidget(covariant _MediaSlide oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _isVideo = _looksLikeVideo(widget.mediaPath);
+  }
+
+  bool _looksLikeVideo(String path) {
+    final normalized = path.toLowerCase();
+    return normalized.endsWith('.mp4') ||
+        normalized.endsWith('.mov') ||
+        normalized.endsWith('.m4v') ||
+        normalized.endsWith('.webm');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isVideo) {
+      final controller = widget.controller;
+      if (controller == null || !controller.value.isInitialized) {
+        return Container(
+          color: AppColors.mutedSurface,
+          child: const Center(child: CircularProgressIndicator()),
+        );
+      }
+
+      return FittedBox(
+        fit: BoxFit.cover,
+        child: SizedBox(
+          width: controller.value.size.width,
+          height: controller.value.size.height,
+          child: VideoPlayer(controller),
+        ),
+      );
+    }
+
+    if (widget.mediaPath.startsWith('assets/')) {
+      return Image.asset(widget.mediaPath, fit: BoxFit.cover);
+    }
+
+    return Image.network(
+      widget.mediaPath,
+      fit: BoxFit.cover,
+      errorBuilder: (context, error, stackTrace) {
+        return Container(
+          color: AppColors.mutedSurface,
+          child: const Center(
+            child: Icon(Icons.image_not_supported, color: AppColors.textMuted),
+          ),
+        );
+      },
     );
   }
 }

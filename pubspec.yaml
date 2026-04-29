@@ -21,20 +21,34 @@ dependencies:
   firebase_storage: ^13.0.2
   flutter_secure_storage: ^9.2.4
   flutter_rating_bar: ^4.0.1
+  http: ^1.5.0
   url_launcher: ^6.3.1
+  video_player: ^2.9.2
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^5.0.0
+  flutter_launcher_icons: ^0.13.1   
+
+flutter_icons:
+  android: true
+  ios: true
+  image_path: "assets/logogg.png"
 
 flutter:
   uses-material-design: true
   assets:
     - assets/download.jpeg
     - assets/astro.jpeg
+    - assets/astro.mp4
+    - assets/translator.mp4
+    - assets/agro.mp4
     - assets/lunar.jpeg
     - assets/profile.png
     - assets/logog.png
+    - assets/logogg.png
     - assets/TravText.png
     - assets/Gauri.jpeg
+    - assets/Language Translation Animation.gif
+    - assets/Travel the world.gif

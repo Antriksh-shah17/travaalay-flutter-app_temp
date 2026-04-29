@@ -1,9 +1,15 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'dart:convert';
+import 'package:image_picker/image_picker.dart';
+import 'package:traavaalay/config/api_config.dart';
 
 class AgroForm extends StatefulWidget {
-  const AgroForm({super.key});
+  final Map<String, dynamic> user;
+
+  const AgroForm({super.key, required this.user});
 
   @override
   State<AgroForm> createState() => _AgroFormState();
@@ -12,34 +18,85 @@ class AgroForm extends StatefulWidget {
 class _AgroFormState extends State<AgroForm> {
   final TextEditingController eventName = TextEditingController();
   final TextEditingController description = TextEditingController();
-  final TextEditingController capacity = TextEditingController();
   final TextEditingController price = TextEditingController();
   final TextEditingController location = TextEditingController();
   final TextEditingController cropType = TextEditingController();
   final TextEditingController season = TextEditingController();
   final TextEditingController farmSize = TextEditingController();
-  final TextEditingController certificates = TextEditingController();
-  final TextEditingController imageUrl = TextEditingController();
+
+  final List<String> _citySuggestions = const [
+    'Delhi',
+    'Mumbai',
+    'Jaipur',
+    'Pune',
+    'Bangalore',
+  ];
 
   bool songImagesUploaded = false;
+  bool _isSubmitting = false;
+  File? _selectedImage;
   DateTime? selectedDate;
   TimeOfDay? selectedTime;
 
-  final String baseUrl = 'http://10.135.240.52:3000'; // your json-server
+  @override
+  void initState() {
+    super.initState();
+    final initialCity = (widget.user['city'] ?? '').toString().trim();
+    if (initialCity.isNotEmpty) {
+      location.text = initialCity;
+    }
+  }
 
   Future<void> pickDate() async {
     final picked = await showDatePicker(
-        context: context,
-        initialDate: selectedDate ?? DateTime.now(),
-        firstDate: DateTime.now(),
-        lastDate: DateTime(2030));
-    if (picked != null) setState(() => selectedDate = picked);
+      context: context,
+      initialDate: selectedDate ?? DateTime.now(),
+      firstDate: DateTime.now(),
+      lastDate: DateTime(2030),
+    );
+    if (picked != null) {
+      setState(() => selectedDate = picked);
+    }
   }
 
   Future<void> pickTime() async {
     final picked = await showTimePicker(
-        context: context, initialTime: TimeOfDay.now());
-    if (picked != null) setState(() => selectedTime = picked);
+      context: context,
+      initialTime: TimeOfDay.now(),
+    );
+    if (picked != null) {
+      setState(() => selectedTime = picked);
+    }
+  }
+
+  Future<void> pickImage() async {
+    final picker = ImagePicker();
+    final pickedFile = await picker.pickImage(source: ImageSource.gallery);
+    if (pickedFile != null) {
+      setState(() => _selectedImage = File(pickedFile.path));
+    }
+  }
+
+  Future<String> _uploadImage() async {
+    if (_selectedImage == null) return '';
+
+    final uploadRequest = http.MultipartRequest(
+      'POST',
+      Uri.parse('${ApiConfig.apiBaseUrl}/upload'),
+    );
+    uploadRequest.files.add(
+      await http.MultipartFile.fromPath('image', _selectedImage!.path),
+    );
+
+    final response = await uploadRequest.send();
+    final body = await response.stream.bytesToString();
+
+    if (response.statusCode != 200) {
+      throw Exception('Image upload failed');
+    }
+
+    final data = jsonDecode(body) as Map<String, dynamic>;
+    return (data['imagePath'] ?? '').toString().replaceFirst('/uploads/', '');
   }
 
   Future<void> submitForm() async {
@@ -47,132 +104,198 @@ class _AgroFormState extends State<AgroForm> {
         description.text.isEmpty ||
         price.text.isEmpty ||
         location.text.isEmpty ||
-        imageUrl.text.isEmpty) {
+        _selectedImage == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Please fill all required fields")),
       );
       return;
     }
 
-    showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) => const Center(child: CircularProgressIndicator()));
-
-    final package = {
-      "category": "Agro",
-      "title": eventName.text,
-      "description": description.text,
-      "price": price.text,
-      "location": location.text,
-      "cropType": cropType.text,
-      "season": season.text,
-      "farmSize": farmSize.text,
-      "certificates": certificates.text,
-      "date": selectedDate?.toIso8601String() ?? "",
-      "time": selectedTime?.format(context) ?? "",
-      "songImagesUploaded": songImagesUploaded,
-      "imageUrl": imageUrl.text
-    };
+    setState(() => _isSubmitting = true);
 
     try {
+      final eventTime = selectedTime?.format(context) ?? "";
+      final imagePath = await _uploadImage();
+      final extraDetails = [
+        if (cropType.text.trim().isNotEmpty)
+          "Crop Type: ${cropType.text.trim()}",
+        if (season.text.trim().isNotEmpty) "Season: ${season.text.trim()}",
+        if (farmSize.text.trim().isNotEmpty)
+          "Farm Size: ${farmSize.text.trim()}",
+        if (songImagesUploaded) "Song images uploaded: Yes",
+      ].join(" | ");
+
+      final mergedDescription = extraDetails.isEmpty
+          ? description.text.trim()
+          : "${description.text.trim()}\n\n$extraDetails";
+
+      final package = {
+        "host_id": widget.user['id'],
+        "category": "Agro",
+        "title": eventName.text.trim(),
+        "description": mergedDescription,
+        "price": price.text.trim(),
+        "location": location.text.trim(),
+        "event_date": selectedDate?.toIso8601String(),
+        "event_time": eventTime,
+        "imageUrl": imagePath,
+      };
+
       final response = await http.post(
-        Uri.parse('$baseUrl/packages'),
+        Uri.parse(ApiConfig.packagesBaseUrl),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode(package),
       );
 
-      Navigator.pop(context); // close loading
+      if (!mounted) return;
 
       if (response.statusCode == 201) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Agro Package Submitted!")),
+          const SnackBar(content: Text("Agro package submitted!")),
         );
-
-        // Clear form
         eventName.clear();
         description.clear();
-        capacity.clear();
         price.clear();
-        location.clear();
         cropType.clear();
         season.clear();
         farmSize.clear();
-        certificates.clear();
-        imageUrl.clear();
+        location.text = (widget.user['city'] ?? '').toString();
         setState(() {
+          _selectedImage = null;
           selectedDate = null;
           selectedTime = null;
           songImagesUploaded = false;
         });
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Failed: ${response.body}")),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text("Failed: ${response.body}")));
       }
     } catch (e) {
-      Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Error: $e")),
-      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Error: $e")));
+    } finally {
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final hostCity = (widget.user['city'] ?? '').toString().trim();
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text("Agro Package Details",
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+          const Text(
+            "Agro Package Details",
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          ),
           const SizedBox(height: 10),
           customTextField("Event Name", eventName),
           customTextField("Description", description, maxLines: 3),
           customTextField("Price", price),
-          customTextField("Location", location),
-          customTextField("Image URL", imageUrl), // ✅ New field
+          customTextField(
+            "Location / Farm Address / Landmark",
+            location,
+            helperText:
+                "Add a city and a recognizable landmark or farm address.",
+          ),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              if (hostCity.isNotEmpty)
+                ActionChip(
+                  label: Text("Use $hostCity"),
+                  onPressed: () => setState(() => location.text = hostCity),
+                ),
+              ..._citySuggestions.map(
+                (city) => ActionChip(
+                  label: Text(city),
+                  onPressed: () => setState(() => location.text = city),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          GestureDetector(
+            onTap: pickImage,
+            child: Container(
+              height: 180,
+              width: double.infinity,
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.grey),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: _selectedImage != null
+                  ? ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Image.file(_selectedImage!, fit: BoxFit.cover),
+                    )
+                  : const Center(child: Text("Tap to upload package image")),
+            ),
+          ),
           const SizedBox(height: 10),
           Row(
             children: [
               Expanded(
                 child: ElevatedButton(
-                    onPressed: pickDate,
-                    child: Text(selectedDate == null
+                  onPressed: pickDate,
+                  child: Text(
+                    selectedDate == null
                         ? "Pick Date"
-                        : "${selectedDate!.day}-${selectedDate!.month}-${selectedDate!.year}")),
+                        : "${selectedDate!.day}-${selectedDate!.month}-${selectedDate!.year}",
+                  ),
+                ),
               ),
               const SizedBox(width: 10),
               Expanded(
                 child: ElevatedButton(
-                    onPressed: pickTime,
-                    child: Text(selectedTime == null
+                  onPressed: pickTime,
+                  child: Text(
+                    selectedTime == null
                         ? "Pick Time"
-                        : selectedTime!.format(context))),
+                        : selectedTime!.format(context),
+                  ),
+                ),
               ),
             ],
           ),
           customTextField("Crop Type", cropType),
           customTextField("Season", season),
           customTextField("Farm Size", farmSize),
-          customTextField("Certificates", certificates),
           CheckboxListTile(
             title: const Text("Song Images Uploaded"),
             value: songImagesUploaded,
-            onChanged: (val) => setState(() => songImagesUploaded = val!),
+            onChanged: (val) =>
+                setState(() => songImagesUploaded = val ?? false),
           ),
           const SizedBox(height: 20),
           Center(
-            child: ElevatedButton(onPressed: submitForm, child: const Text("Submit")),
-          )
+            child: ElevatedButton(
+              onPressed: _isSubmitting ? null : submitForm,
+              child: _isSubmitting
+                  ? const CircularProgressIndicator(color: Colors.white)
+                  : const Text("Submit"),
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget customTextField(String label, TextEditingController controller,
-      {int maxLines = 1}) {
+  Widget customTextField(
+    String label,
+    TextEditingController controller, {
+    int maxLines = 1,
+    String? helperText,
+  }) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: TextField(
@@ -180,6 +303,7 @@ class _AgroFormState extends State<AgroForm> {
         maxLines: maxLines,
         decoration: InputDecoration(
           labelText: label,
+          helperText: helperText,
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
         ),
       ),

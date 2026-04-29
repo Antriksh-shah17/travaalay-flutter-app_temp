@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:traavaalay/View/Admin/AdminBookingPage.dart';
-import 'package:traavaalay/View/Admin/AdminTranslators.dart';
+import 'package:traavaalay/View/Admin/AdminUsersPage.dart';
 import 'package:traavaalay/View/Login.dart';
-import 'AdminVerificationRequestsPage.dart';
+import 'package:traavaalay/View/Admin/AdminVerificationScreen.dart';
 
 class AdminDashboard extends StatefulWidget {
   final Map<String, dynamic> user; // <-- define user field
@@ -21,14 +21,14 @@ class _AdminDashboardState extends State<AdminDashboard> {
   void initState() {
     super.initState();
     _screens = const [
-      AdminTranslatorsPage(),
+      AdminUsersPage(),
       AdminBookingsPage(),
-      AdminVerificationRequestsPage()
+      AdminVerificationScreen()
     ];
   }
 
   final List<BottomNavigationBarItem> _navItems = const [
-    BottomNavigationBarItem(icon: Icon(Icons.people), label: "Translators"),
+    BottomNavigationBarItem(icon: Icon(Icons.people), label: "Users"),
     BottomNavigationBarItem(icon: Icon(Icons.book_online), label: "Bookings"),
     BottomNavigationBarItem(icon: Icon(Icons.verified), label: "Verifications")
   ];
@@ -51,14 +51,11 @@ class _AdminDashboardState extends State<AdminDashboard> {
             },
           ),
         ],
-        backgroundColor: Colors.teal,
       ),
       body: _screens[_selectedIndex],
       bottomNavigationBar: BottomNavigationBar(
         items: _navItems,
         currentIndex: _selectedIndex,
-        selectedItemColor: Colors.teal,
-        unselectedItemColor: Colors.grey,
         onTap: (index) => setState(() => _selectedIndex = index),
       ),
     );

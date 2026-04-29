@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:traavaalay/config/api_config.dart';
+import 'package:traavaalay/theme/app_colors.dart';
 
 class BlogScreen extends StatefulWidget {
   const BlogScreen({super.key});
@@ -13,8 +15,7 @@ class _BlogScreenState extends State<BlogScreen> {
   List<Map<String, dynamic>> blogs = [];
   bool _isLoading = true;
 
-  // Replace with your server IP
-  final String baseUrl = "http://10.135.240.52:3000";
+  final String baseUrl = ApiConfig.blogsBaseUrl;
 
   @override
   void initState() {
@@ -24,33 +25,67 @@ class _BlogScreenState extends State<BlogScreen> {
 
   Future<void> fetchBlogs() async {
     try {
-      final response = await http.get(Uri.parse("$baseUrl/blogs"));
+      final response = await http
+          .get(Uri.parse(baseUrl))
+          .timeout(const Duration(seconds: 15));
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(response.body);
+
+        if (!mounted) return;
+
         setState(() {
           blogs = data.map((b) {
-            String img = b['image'] ?? "";
-            if (!img.startsWith("http")) {
-              // Use baseUrl + image name (json-server static folder)
-              img = "$baseUrl/$img";
-            }
+            final img = _resolveBlogImage(b['image']);
             return {
               "id": b['id'],
               "title": b['title'],
               "description": b['description'],
-              "date": b['date'],
+              "date": b['blog_date'] ?? b['date'] ?? "",
               "image": img,
             };
           }).toList();
           _isLoading = false;
         });
       } else {
+        if (!mounted) return;
         setState(() => _isLoading = false);
       }
     } catch (e) {
-      print("Error fetching blogs: $e");
+      debugPrint("Error fetching blogs: $e");
+      if (!mounted) return;
       setState(() => _isLoading = false);
     }
+  }
+
+  String _resolveBlogImage(dynamic imageValue) {
+    final imagePath = (imageValue ?? '').toString().trim();
+
+    if (imagePath.isEmpty) {
+      return '';
+    }
+
+    if (imagePath.startsWith('http') || imagePath.startsWith('data:image')) {
+      return imagePath;
+    }
+
+    if (imagePath.startsWith('/uploads/')) {
+      return "${ApiConfig.rootUrl}$imagePath";
+    }
+
+    return "${ApiConfig.rootUrl}/uploads/$imagePath";
+  }
+
+  String _formatDate(dynamic rawDate) {
+    final value = (rawDate ?? '').toString().trim();
+    if (value.isEmpty) return '';
+
+    final parsed = DateTime.tryParse(value);
+    if (parsed == null) return value;
+
+    final day = parsed.day.toString().padLeft(2, '0');
+    final month = parsed.month.toString().padLeft(2, '0');
+    final year = (parsed.year % 100).toString().padLeft(2, '0');
+    return '$day $month $year';
   }
 
   @override
@@ -62,7 +97,6 @@ class _BlogScreenState extends State<BlogScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text("Blogs"),
-        backgroundColor: Colors.teal,
         leading: BackButton(onPressed: () => Navigator.pop(context)),
       ),
       body: ListView.builder(
@@ -76,16 +110,18 @@ class _BlogScreenState extends State<BlogScreen> {
 
           return Card(
             margin: const EdgeInsets.symmetric(vertical: 8),
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
             elevation: 3,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 if (post["image"] != null)
                   ClipRRect(
-                    borderRadius:
-                        const BorderRadius.vertical(top: Radius.circular(12)),
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(12),
+                    ),
                     child: Image.network(
                       post["image"]!,
                       height: 180,
@@ -93,9 +129,10 @@ class _BlogScreenState extends State<BlogScreen> {
                       fit: BoxFit.cover,
                       errorBuilder: (context, error, stackTrace) => Container(
                         height: 180,
-                        color: Colors.grey[300],
-                        child:
-                            const Center(child: Icon(Icons.image_not_supported)),
+                        color: AppColors.mutedSurface,
+                        child: const Center(
+                          child: Icon(Icons.image_not_supported),
+                        ),
                       ),
                     ),
                   ),
@@ -104,26 +141,42 @@ class _BlogScreenState extends State<BlogScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(post["title"]!,
-                          style: const TextStyle(
-                              fontSize: 18, fontWeight: FontWeight.bold)),
+                      Text(
+                        post["title"]!,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                       const SizedBox(height: 8),
                       Text(preview!),
                       const SizedBox(height: 8),
-                      Text(post["date"]!,
-                          style:
-                              const TextStyle(fontSize: 12, color: Colors.grey)),
+                      Text(
+                        _formatDate(post["date"]),
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: AppColors.textMuted,
+                        ),
+                      ),
                       const SizedBox(height: 8),
                       Align(
                         alignment: Alignment.centerRight,
                         child: TextButton(
+                          style: TextButton.styleFrom(
+                            foregroundColor: AppColors.secondary,
+                          ),
                           onPressed: () {
                             Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                    builder: (_) => FullBlogScreen(post: post)));
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => FullBlogScreen(post: post),
+                              ),
+                            );
                           },
-                          child: const Text("Read More"),
+                          child: const Text(
+                            "Read More",
+                            style: TextStyle(fontWeight: FontWeight.w700),
+                          ),
                         ),
                       ),
                     ],
@@ -147,10 +200,7 @@ class FullBlogScreen extends StatelessWidget {
     final paragraphs = post["description"]!.split(". ");
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(post["title"]!),
-        backgroundColor: Colors.teal,
-      ),
+      appBar: AppBar(title: Text(post["title"]!)),
       body: SingleChildScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -163,9 +213,8 @@ class FullBlogScreen extends StatelessWidget {
                 fit: BoxFit.cover,
                 errorBuilder: (context, error, stackTrace) => Container(
                   height: 250,
-                  color: Colors.grey[300],
-                  child:
-                      const Center(child: Icon(Icons.image_not_supported)),
+                  color: AppColors.mutedSurface,
+                  child: const Center(child: Icon(Icons.image_not_supported)),
                 ),
               ),
             Padding(

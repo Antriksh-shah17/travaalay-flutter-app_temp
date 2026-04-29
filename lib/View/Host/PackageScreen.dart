@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:traavaalay/View/Host/AgroForm.dart';
 import 'package:traavaalay/View/Host/AstroForm.dart';
-
-
+import 'package:traavaalay/View/Host/TourForm.dart';
+import 'package:traavaalay/theme/app_colors.dart';
 
 class PackageScreen extends StatefulWidget {
-  const PackageScreen({super.key});
+  final Map<String, dynamic>? user;
+
+  const PackageScreen({super.key, this.user});
 
   @override
   State<PackageScreen> createState() => _PackageScreenState();
@@ -18,7 +19,7 @@ class _PackageScreenState extends State<PackageScreen>
 
   @override
   void initState() {
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
     super.initState();
   }
 
@@ -34,26 +35,25 @@ class _PackageScreenState extends State<PackageScreen>
       appBar: AppBar(
         title: const Text(
           "Create Package",
-          style: TextStyle(color: Colors.teal),
+          style: TextStyle(color: AppColors.textPrimary),
         ),
-        backgroundColor: Colors.white,
-        elevation: 1,
-        iconTheme: const IconThemeData(color: Colors.teal),
+        elevation: 0,
+        iconTheme: const IconThemeData(color: AppColors.textPrimary),
       ),
       body: Column(
         children: [
           // ✅ TabBar below AppBar
           Material(
-            color: Colors.white,
+            color: AppColors.surface,
             child: TabBar(
               controller: _tabController,
-              indicatorColor: Colors.teal,
-              labelColor: Colors.teal,
-              unselectedLabelColor: Colors.grey,
+              indicatorColor: AppColors.secondary,
+              labelColor: AppColors.secondary,
+              unselectedLabelColor: AppColors.textMuted,
               tabs: const [
+                Tab(text: "Tour"),
                 Tab(text: "Agro"),
                 Tab(text: "Astro"),
-                
               ],
             ),
           ),
@@ -61,10 +61,10 @@ class _PackageScreenState extends State<PackageScreen>
           Expanded(
             child: TabBarView(
               controller: _tabController,
-              children: const [
-                AgroForm(),
-                AstroForm(),
-                
+              children: [
+                TourForm(user: widget.user ?? const {}),
+                AgroForm(user: widget.user ?? const {}),
+                AstroForm(user: widget.user ?? const {}),
               ],
             ),
           ),

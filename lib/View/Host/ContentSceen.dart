@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
+import 'package:traavaalay/config/api_config.dart';
+import 'package:traavaalay/theme/app_colors.dart';
 
 class CreateBlogScreen extends StatefulWidget {
   const CreateBlogScreen({super.key});
@@ -17,8 +19,7 @@ class _CreateBlogScreenState extends State<CreateBlogScreen> {
   File? selectedImage;
   bool loading = false;
 
-  // Replace with your json-server URL
-  final String baseUrl = 'http://10.135.240.52:3000';
+  final String baseUrl = ApiConfig.blogsBaseUrl;
 
   Future<void> pickImage() async {
     final picker = ImagePicker();
@@ -37,56 +38,79 @@ class _CreateBlogScreenState extends State<CreateBlogScreen> {
     }
 
     if (selectedImage == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Please select an image")),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("Please select an image")));
       return;
     }
 
     setState(() => loading = true);
 
     try {
-      // Here we simulate "uploading" image by converting to base64
-      // In real scenario, you can use Firebase Storage or real image URL
-      final imageBytes = await selectedImage!.readAsBytes();
-      String base64Image = base64Encode(imageBytes);
+      final uploadRequest = http.MultipartRequest(
+        'POST',
+        Uri.parse('${ApiConfig.apiBaseUrl}/upload'),
+      );
+      uploadRequest.files.add(
+        await http.MultipartFile.fromPath('image', selectedImage!.path),
+      );
+      final uploadResponse = await uploadRequest.send();
+      final uploadResponseBody = await uploadResponse.stream.bytesToString();
+
+      if (uploadResponse.statusCode != 200) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Image upload failed: ${uploadResponse.statusCode}"),
+          ),
+        );
+        setState(() => loading = false);
+        return;
+      }
+
+      final uploadedData = jsonDecode(uploadResponseBody);
+      final imagePath = (uploadedData['imagePath'] ?? '').toString();
 
       // Prepare blog data
       final blogData = {
         "title": titleController.text,
         "description": descriptionController.text,
-        "image": "data:image/png;base64,$base64Image",
-        "date": DateTime.now().toIso8601String()
+        "image": imagePath,
+        "date": DateTime.now().toIso8601String(),
       };
 
-      // POST to json-server
+      // POST to the same backend used by the user blog feed
       final response = await http.post(
-        Uri.parse('$baseUrl/blogs'),
+        Uri.parse(baseUrl),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode(blogData),
       );
 
       if (response.statusCode == 201) {
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("Blog created successfully!")),
         );
 
-        // Clear form
         titleController.clear();
         descriptionController.clear();
         setState(() => selectedImage = null);
       } else {
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text("Failed: ${response.statusCode}")),
         );
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Error: $e")),
-      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Error: $e")));
     }
 
-    setState(() => loading = false);
+    if (mounted) {
+      setState(() => loading = false);
+    }
   }
 
   @override
@@ -94,7 +118,6 @@ class _CreateBlogScreenState extends State<CreateBlogScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text("Create Blog", style: TextStyle(color: Colors.white)),
-        backgroundColor: Colors.teal,
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
@@ -135,8 +158,10 @@ class _CreateBlogScreenState extends State<CreateBlogScreen> {
             ElevatedButton(
               onPressed: loading ? null : submitBlog,
               style: ElevatedButton.styleFrom(
-                  minimumSize: const Size(double.infinity, 50),
-                  backgroundColor: Colors.teal),
+                minimumSize: const Size(double.infinity, 50),
+                backgroundColor: AppColors.secondary,
+                foregroundColor: AppColors.primary,
+              ),
               child: loading
                   ? const CircularProgressIndicator(color: Colors.white)
                   : const Text("Submit Blog"),

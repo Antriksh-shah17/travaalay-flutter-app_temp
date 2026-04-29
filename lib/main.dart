@@ -1,12 +1,10 @@
-import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:traavaalay/View/SplashScreen.dart';
-
+import 'package:traavaalay/theme/app_theme.dart';
 
 Future<void> main() async {
-   WidgetsFlutterBinding.ensureInitialized();
-  
-  
+  WidgetsFlutterBinding.ensureInitialized();
+
   runApp(const TravaalayApp());
 }
 
@@ -18,7 +16,9 @@ class TravaalayApp extends StatelessWidget {
     return MaterialApp(
       title: 'Travaalay',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(primarySwatch: Colors.blueGrey),
+      theme: AppTheme.dark,
+      darkTheme: AppTheme.dark,
+      themeMode: ThemeMode.dark,
       home: const SplashScreen(),
     );
   }
